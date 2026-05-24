@@ -109,13 +109,11 @@ Utilisez AWS SAM ou Serverless Framework pour déployer
 ### **Optiklink Panel** 🎮
 [![Optiklink](https://img.shields.io/badge/Optiklink%20Panel-FF6B35?style=for-the-badge&logo=gamepad&logoColor=white)](https://optiklink.com/)
 
-```
 1. Accédez à votre Optiklink Dashboard
 2. Créez un nouveau service
 3. Uploadez le fichier package.json
 4. Configurez les ports et variables
 5. Déployez en un clic
-```
 
 ---
 
