@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mira Bot v1 - WhatsApp Multi-Services</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="stars"></div>
+    
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="logo-section">
+                <div class="logo-icon">🤖</div>
+                <h1 class="main-title">MIRA BOT v1</h1>
+                <p class="subtitle">WhatsApp Multi-Services Avancé</p>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="content-wrapper">
+            <!-- Connection Card -->
+            <div class="card connection-card">
+                <div class="card-header">
+                    <i class="fas fa-plug"></i>
+                    <h2>Connexion WhatsApp</h2>
+                </div>
+
+                <div class="card-content">
+                    <p class="info-text">Connectez votre numéro WhatsApp pour activer le bot</p>
+
+                    <!-- Phone Input Section -->
+                    <div class="input-group">
+                        <label for="phone">Numéro de Téléphone</label>
+                        <div class="phone-input-wrapper">
+                            <span class="country-code">+</span>
+                            <input 
+                                type="tel" 
+                                id="phone" 
+                                placeholder="25766486303"
+                                maxlength="20"
+                                class="phone-input"
+                            >
+                            <button class="flag-btn" title="Sélectionner le pays">
+                                <i class="fas fa-globe"></i>
+                            </button>
+                        </div>
+                        <small class="hint">Format: +[code_pays][numéro]</small>
+                    </div>
+
+                    <!-- Send Button -->
+                    <button class="btn btn-primary send-btn" id="sendBtn">
+                        <span class="btn-text">
+                            <i class="fas fa-paper-plane"></i>
+                            Envoyer le Code
+                        </span>
+                        <span class="loading-spinner hidden">
+                            <i class="fas fa-spinner"></i>
+                        </span>
+                    </button>
+
+                    <!-- Status Message -->
+                    <div class="status-message hidden" id="statusMessage">
+                        <p id="statusText"></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pairing Code Card -->
+            <div class="card pairing-card hidden" id="pairingCard">
+                <div class="card-header success">
+                    <i class="fas fa-check-circle"></i>
+                    <h2>Code d'Appairage</h2>
+                </div>
+
+                <div class="card-content">
+                    <p class="info-text">Code unique généré pour votre WhatsApp</p>
+
+                    <!-- Pairing Code Display -->
+                    <div class="pairing-code-section">
+                        <div class="session-info">
+                            <p><strong>ID Session:</strong> <span id="sessionId" class="code-value">-</span></p>
+                            <p><strong>Numéro:</strong> <span id="displayPhone" class="code-value">-</span></p>
+                            <p><strong>Statut:</strong> <span id="statusBadge" class="status-badge pending">En attente</span></p>
+                        </div>
+
+                        <div class="code-display">
+                            <label>Votre Code d'Appairage</label>
+                            <div class="code-box">
+                                <code id="pairingCode" class="code-value">CODE_ICI</code>
+                                <button class="copy-btn" id="copyBtn" title="Copier le code">
+                                    <i class="fas fa-copy"></i>
+                                </button>
+                            </div>
+                            <div class="copy-feedback hidden" id="copyFeedback">
+                                ✅ Code copié!
+                            </div>
+                        </div>
+
+                        <!-- Instructions -->
+                        <div class="instructions">
+                            <h3><i class="fas fa-info-circle"></i> Instructions</h3>
+                            <ol>
+                                <li>Ouvrez WhatsApp sur votre téléphone</li>
+                                <li>Allez dans <strong>Appareils connectés</strong></li>
+                                <li>Cliquez sur <strong>Connecter un appareil</strong></li>
+                                <li>Collez le code d'appairage ci-dessus</li>
+                                <li>Validez et attendez la confirmation</li>
+                            </ol>
+                        </div>
+
+                        <!-- Timer -->
+                        <div class="timer-section">
+                            <p>Code expire dans: <span id="timer" class="timer">10:00</span></p>
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="progressFill"></div>
+                            </div>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="action-buttons">
+                            <button class="btn btn-secondary" id="regenerateBtn">
+                                <i class="fas fa-redo"></i> Régénérer Code
+                            </button>
+                            <button class="btn btn-success hidden" id="confirmBtn">
+                                <i class="fas fa-check"></i> Confirmer Connexion
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Features Card -->
+            <div class="card features-card">
+                <div class="card-header">
+                    <i class="fas fa-star"></i>
+                    <h2>Fonctionnalités</h2>
+                </div>
+
+                <div class="features-grid">
+                    <div class="feature-item">
+                        <div class="feature-icon">🚀</div>
+                        <h3>Performance</h3>
+                        <p>Réponses ultra-rapides</p>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-icon">🎯</div>
+                        <h3>Multi-Services</h3>
+                        <p>Multiples fonctionnalités</p>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-icon">🔐</div>
+                        <h3>Sécurisé</h3>
+                        <p>Chiffrement des données</p>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-icon">⚡</div>
+                        <h3>Lightweight</h3>
+                        <p>Consommation minimale</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Commands Preview Card -->
+            <div class="card commands-card">
+                <div class="card-header">
+                    <i class="fas fa-terminal"></i>
+                    <h2>Commandes Disponibles</h2>
+                </div>
+
+                <div class="commands-grid">
+                    <div class="command-item">
+                        <span class="cmd-prefix">!</span><span class="cmd-name">ping</span>
+                        <p>Teste la connexion</p>
+                    </div>
+                    <div class="command-item">
+                        <span class="cmd-prefix">!</span><span class="cmd-name">menu</span>
+                        <p>Affiche le menu</p>
+                    </div>
+                    <div class="command-item">
+                        <span class="cmd-prefix">!</span><span class="cmd-name">help</span>
+                        <p>Aide complète</p>
+                    </div>
+                    <div class="command-item">
+                        <span class="cmd-prefix">!</span><span class="cmd-name">info</span>
+                        <p>Infos du bot</p>
+                    </div>
+                    <div class="command-item">
+                        <span class="cmd-prefix">!</span><span class="cmd-name">time</span>
+                        <p>Heure actuelle</p>
+                    </div>
+                    <div class="command-item">
+                        <span class="cmd-prefix">!</span><span class="cmd-name">joke</span>
+                        <p>Blague aléatoire</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p>🤖 Créé avec ❤️ par <strong>Dark Shadow</strong></p>
+            <p>© 2026 Mira Bot - Tous droits réservés</p>
+            <div class="social-links">
+                <a href="https://wa.me/25766486303" target="_blank" title="WhatsApp">
+                    <i class="fab fa-whatsapp"></i>
+                </a>
+                <a href="https://github.com/darkshadow-1er" target="_blank" title="GitHub">
+                    <i class="fab fa-github"></i>
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
