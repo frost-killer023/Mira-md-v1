@@ -1,7 +1,7 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const fs = require('fs');
 const path = require('path');
-const http = require('http'); // Ajouté pour stopper les redémarrages de Render
+const http = require('http');
 const config = require('../config/config');
 const CommandHandler = require('./CommandHandler');
 const EventHandler = require('./EventHandler');
@@ -14,14 +14,14 @@ class Bot {
     this.eventHandler = null;
     this.logger = new Logger();
     this.isReady = false;
-    this.hasRequestedCode = false; // Pour éviter de demander plusieurs codes
+    this.hasRequestedCode = false; 
   }
 
   async initialize() {
     try {
       this.logger.info('🤖 Initializing Mira Bot...');
       
-      // 1. Créer un mini serveur HTTP pour que Render reste tranquille
+      // 1. Serveur HTTP pour stabiliser Render sur le port requis
       const PORT = process.env.PORT || 3000;
       http.createServer((req, res) => {
         res.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -30,12 +30,23 @@ class Bot {
         this.logger.success(`🌐 Ping server listening on port ${PORT}`);
       });
 
-      // Create WhatsApp client
+      // 2. Configuration ultra-robuste de Puppeteer pour éviter le blocage WhatsApp et le crash RAM
       this.client = new Client({
         authStrategy: new LocalAuth({ clientId: config.whatsapp.session }),
         puppeteer: {
           headless: true,
-          args: ['--no-sandbox', '--disable-setuid-sandbox']
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process',
+            '--disable-gpu'
+          ],
+          // Permet de contourner le blocage anti-bot de WhatsApp (Règle l'erreur "- t")
+          userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         }
       });
 
@@ -43,23 +54,23 @@ class Bot {
       this.commandHandler = new CommandHandler(this.client);
       this.eventHandler = new EventHandler(this.client);
 
-      // Setup Pairing Code stabilisé
+      // Setup Pairing Code avec sécurité anti-spam
       this.client.on('qr', async (qr) => {
-        if (this.hasRequestedCode) return; // Si on a déjà un code affiché, on stoppe.
-        
+        if (this.hasRequestedCode) return;
         this.hasRequestedCode = true;
-        this.logger.warn('Demande de code de couplage unique en cours...');
         
-        // Petit délai pour laisser le client se stabiliser avant la demande
+        this.logger.warn('Page WhatsApp Web chargée. Préparation du code de couplage dans 10 secondes...');
+        
+        // On attend que la page soit stable avant de forcer la demande du code
         setTimeout(async () => {
           try {
             const pairingCode = await this.client.requestPairingCode('25766486303');
             this.logger.success(`\n═══════════════════════════════════════════\n🔑 TON CODE DE COUPLAGE WHATSAPP : ${pairingCode}\n═══════════════════════════════════════════\n`);
           } catch (err) {
-            this.logger.error('Erreur lors de la génération du pairing code :', err);
-            this.hasRequestedCode = false; // Permet de réessayer si échec réel
+            this.logger.error('Erreur lors de la génération du pairing code :', err.message || err);
+            this.hasRequestedCode = false; // Réinitialise si WhatsApp rejette à cause du délai
           }
-        }, 5000);
+        }, 10000);
       });
 
       // Setup Ready event
