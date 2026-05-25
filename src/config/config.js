@@ -5,16 +5,16 @@ module.exports = {
   // WhatsApp Config
   whatsapp: {
     token: process.env.WHATSAPP_TOKEN,
-    phone: process.env.WHATSAPP_PHONE,
+    phone: process.env.WHATSAPP_PHONE || '25766486303',
     session: process.env.WHATSAPP_SESSION || 'mira_session'
   },
 
   // Bot Config
   bot: {
     name: process.env.BOT_NAME || 'Mira',
-    prefix: process.env.BOT_PREFIX || '!',
-    owner: process.env.BOT_OWNER,
-    debug: process.env.DEBUG_MODE === 'true'
+    prefix: '!', // Fixé sur '!' directement pour être sûr
+    owner: '25766486303@c.us', // Ton identifiant WhatsApp officiel pour les commandes Admin/Owner
+    debug: true
   },
 
   // Database Config
@@ -41,11 +41,11 @@ module.exports = {
 
   // Features
   features: {
-    ai: process.env.ENABLE_AI === 'true',
-    weather: process.env.ENABLE_WEATHER === 'true',
-    music: process.env.ENABLE_MUSIC === 'true',
-    admin: process.env.ENABLE_ADMIN === 'true',
-    autoReply: process.env.ENABLE_AUTO_REPLY === 'true'
+    ai: true, // Activé par défaut
+    weather: true,
+    music: true,
+    admin: true,
+    autoReply: true
   },
 
   // Timeouts
