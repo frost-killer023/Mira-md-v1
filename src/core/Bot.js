@@ -1,6 +1,7 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const fs = require('fs');
 const path = require('path');
+const http = require('http'); // Ajouté pour stopper les redémarrages de Render
 const config = require('../config/config');
 const CommandHandler = require('./CommandHandler');
 const EventHandler = require('./EventHandler');
@@ -13,12 +14,22 @@ class Bot {
     this.eventHandler = null;
     this.logger = new Logger();
     this.isReady = false;
+    this.hasRequestedCode = false; // Pour éviter de demander plusieurs codes
   }
 
   async initialize() {
     try {
       this.logger.info('🤖 Initializing Mira Bot...');
       
+      // 1. Créer un mini serveur HTTP pour que Render reste tranquille
+      const PORT = process.env.PORT || 3000;
+      http.createServer((req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end('Mira Bot is running smoothly!\n');
+      }).listen(PORT, '0.0.0.0', () => {
+        this.logger.success(`🌐 Ping server listening on port ${PORT}`);
+      });
+
       // Create WhatsApp client
       this.client = new Client({
         authStrategy: new LocalAuth({ clientId: config.whatsapp.session }),
@@ -32,16 +43,23 @@ class Bot {
       this.commandHandler = new CommandHandler(this.client);
       this.eventHandler = new EventHandler(this.client);
 
-      // Setup Pairing Code (Modifié pour le déploiement sur mobile/Render)
+      // Setup Pairing Code stabilisé
       this.client.on('qr', async (qr) => {
-        this.logger.warn('Demande de code de couplage en cours pour le numéro +25766486303...');
-        try {
-          // Demande le code texte à WhatsApp pour ton numéro (sans le signe +)
-          const pairingCode = await this.client.requestPairingCode('25766486303');
-          this.logger.success(`\n═══════════════════════════════════════════\n🔑 TON CODE DE COUPLAGE WHATSAPP : ${pairingCode}\n═══════════════════════════════════════════\n`);
-        } catch (err) {
-          this.logger.error('Erreur lors de la génération du pairing code :', err);
-        }
+        if (this.hasRequestedCode) return; // Si on a déjà un code affiché, on stoppe.
+        
+        this.hasRequestedCode = true;
+        this.logger.warn('Demande de code de couplage unique en cours...');
+        
+        // Petit délai pour laisser le client se stabiliser avant la demande
+        setTimeout(async () => {
+          try {
+            const pairingCode = await this.client.requestPairingCode('25766486303');
+            this.logger.success(`\n═══════════════════════════════════════════\n🔑 TON CODE DE COUPLAGE WHATSAPP : ${pairingCode}\n═══════════════════════════════════════════\n`);
+          } catch (err) {
+            this.logger.error('Erreur lors de la génération du pairing code :', err);
+            this.hasRequestedCode = false; // Permet de réessayer si échec réel
+          }
+        }, 5000);
       });
 
       // Setup Ready event
@@ -64,6 +82,7 @@ class Bot {
       this.client.on('disconnected', () => {
         this.logger.warn('⚠️ Client disconnected!');
         this.isReady = false;
+        this.hasRequestedCode = false;
       });
 
       // Setup error handling
