@@ -31,6 +31,8 @@ module.exports = {
 6️⃣  !status - System status
 7️⃣  !logs - View logs
 8️⃣  !backup - Backup database
+9️⃣  !open - Ouvrir le groupe
+🔟 !close - Fermer le groupe
 
 📊 *SYSTEM INFO:*
 ✅ Status: Online
