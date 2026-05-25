@@ -1,5 +1,4 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
-const qrcode = require('qrcode-terminal');
 const fs = require('fs');
 const path = require('path');
 const config = require('../config/config');
@@ -33,10 +32,16 @@ class Bot {
       this.commandHandler = new CommandHandler(this.client);
       this.eventHandler = new EventHandler(this.client);
 
-      // Setup QR Code
-      this.client.on('qr', (qr) => {
-        this.logger.warn('QR Code received. Scan to login:');
-        qrcode.generate(qr, { small: true });
+      // Setup Pairing Code (Modifié pour le déploiement sur mobile/Render)
+      this.client.on('qr', async (qr) => {
+        this.logger.warn('Demande de code de couplage en cours pour le numéro +25766486303...');
+        try {
+          // Demande le code texte à WhatsApp pour ton numéro (sans le signe +)
+          const pairingCode = await this.client.requestPairingCode('25766486303');
+          this.logger.success(`\n═══════════════════════════════════════════\n🔑 TON CODE DE COUPLAGE WHATSAPP : ${pairingCode}\n═══════════════════════════════════════════\n`);
+        } catch (err) {
+          this.logger.error('Erreur lors de la génération du pairing code :', err);
+        }
       });
 
       // Setup Ready event
