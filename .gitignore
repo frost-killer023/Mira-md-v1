@@ -1,19 +1,21 @@
-# Dependencies
+# Dépendances Node
 node_modules/
 npm-debug.log
 yarn-error.log
 
-# Environment
+# Variables d'environnement — NE JAMAIS envoyer sur GitHub
 .env
 .env.local
 .env.*.local
 
-# Sessions
-WhatsAppWeb.js/
+# Sessions WhatsApp — NE JAMAIS envoyer sur GitHub (contient vos credentials)
+sessions/
+session/
+session*/
 .wwebjs_auth/
-session*
+WhatsAppWeb.js/
 
-# Database
+# Base de données
 *.db
 *.sqlite
 
@@ -21,11 +23,11 @@ session*
 logs/
 *.log
 
-# OS
+# Système d'exploitation
 .DS_Store
 Thumbs.db
 
-# IDE
+# Éditeurs de code
 .vscode/
 .idea/
 *.swp
@@ -37,6 +39,6 @@ dist/
 build/
 .next/
 
-# Testing
+# Tests
 coverage/
 .nyc_output/
