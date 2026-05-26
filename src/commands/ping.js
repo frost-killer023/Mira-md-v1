@@ -1,21 +1,20 @@
 module.exports = {
   name: 'ping',
-  description: 'Check bot latency',
+  description: 'Vérifie la latence du bot',
   usage: '!ping',
   category: 'utility',
   prefix: true,
 
-  async execute(message, args, client) {
-    const now = Date.now();
-    const msg = await message.reply('🏓 Pong!');
-    const latency = Date.now() - now;
+  async execute(message, args, socket) {
+    const start = Date.now();
+    await message.reply('🏓 Calcul de la latence...');
+    const latency = Date.now() - start;
 
-    await msg.edit(`
-🏓 *PONG!*
-
-⚡ *Latency:* ${latency}ms
-📊 *Status:* ✅ Online
-🤖 *Bot:* Ready
-    `);
+    await message.reply(
+      '🏓 *PONG !*\n\n' +
+      `⚡ *Latence :* ${latency}ms\n` +
+      '📊 *Statut :* ✅ En ligne\n' +
+      '🤖 *Bot :* Prêt'
+    );
   }
 };
