@@ -1,68 +1,99 @@
+'use strict';
+
 const {
   makeWASocket,
   useMultiFileAuthState,
   DisconnectReason,
   fetchLatestBaileysVersion,
 } = require('@whiskeysockets/baileys');
-const pino   = require('pino');
-const http   = require('http');
-const path   = require('path');
-const Logger = require('../utils/Logger');
+const pino    = require('pino');
+const http    = require('http');
+const path    = require('path');
+const Logger  = require('../utils/Logger');
 const CommandHandler = require('./CommandHandler');
 
-const FALLBACK_VERSION = [2, 3000, 1015901307];
+// Version WA de secours — utilisée si fetchLatestBaileysVersion() échoue
+const FALLBACK_WA_VERSION = [2, 3000, 1015901307];
 
 class Bot {
   constructor() {
-    this.socket           = null;
-    this.logger           = new Logger();
-    this.commandHandler   = null;
-    this.isReconnecting   = false;
-    this._httpStarted     = false;
-    this._pairingRequested = false;
-    this._pairingTimer    = null;
+    this.socket             = null;
+    this.saveCreds          = null;   // référence stable à saveCreds entre reconnexions
+    this.logger             = new Logger();
+    this.commandHandler     = null;
+    this._httpStarted       = false;
+
+    // ── FLAGS DE CONTRÔLE ────────────────────────────────────────
+    // _pairingCodeSent : true dès que requestPairingCode() a réussi.
+    //   Empêche de générer un nouveau code après chaque reconnexion
+    //   (le 428 post-pairing reconnecte sans demander de nouveau code).
+    this._pairingCodeSent   = false;
+
+    // _reconnecting : verrou anti-boucle — une seule reconnexion à la fois
+    this._reconnecting      = false;
+
+    // _reconnectCount : compteur pour espacer les tentatives
+    this._reconnectCount    = 0;
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  // POINT D'ENTRÉE PUBLIC — ne throw jamais
+  // ═══════════════════════════════════════════════════════════════
   async initialize() {
     try {
-      await this._boot();
+      await this._startHTTP();
+      await this._connect();
     } catch (err) {
-      // On rattrape TOUT pour ne jamais laisser planter le process
-      this.logger.error('Erreur initialize() : ' + err.message);
-      this.logger.info('🔄 Redémarrage dans 8 secondes...');
-      setTimeout(() => this.initialize(), 8000);
+      this.logger.error('initialize() erreur : ' + err.message);
+      this._scheduleReconnect();
     }
   }
 
-  async _boot() {
-
-    // ── 1. SERVEUR HTTP ──────────────────────────────────────────
-    if (!this._httpStarted) {
-      const PORT = process.env.PORT || 3000;
+  // ═══════════════════════════════════════════════════════════════
+  // SERVEUR HTTP — un seul démarrage, gardé en vie par UptimeRobot
+  // ═══════════════════════════════════════════════════════════════
+  async _startHTTP() {
+    if (this._httpStarted) return;
+    const PORT = process.env.PORT || 3000;
+    await new Promise((resolve) => {
       http.createServer((req, res) => {
         res.writeHead(200, { 'Content-Type': 'text/plain' });
         res.end('Mira Bot is Online');
       }).listen(PORT, '0.0.0.0', () => {
-        this.logger.info('🌐 Serveur HTTP actif sur le port ' + PORT);
+        this.logger.info('🌐 HTTP actif sur le port ' + PORT);
+        resolve();
       });
-      this._httpStarted = true;
-    }
+    });
+    this._httpStarted = true;
+  }
 
-    // ── 2. SESSION ───────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════
+  // CONNEXION PRINCIPALE
+  // ═══════════════════════════════════════════════════════════════
+  async _connect() {
+
+    // ── 1. SESSION ───────────────────────────────────────────────
     const sessionsPath = path.join(process.cwd(), 'sessions');
     const { state, saveCreds } = await useMultiFileAuthState(sessionsPath);
 
-    // ── 3. VERSION WA ────────────────────────────────────────────
-    let version = FALLBACK_VERSION;
+    // On garde saveCreds sur l'instance pour pouvoir l'appeler
+    // dans creds.update même après une reconnexion
+    this.saveCreds = saveCreds;
+
+    // ── 2. VERSION WA ────────────────────────────────────────────
+    let version = FALLBACK_WA_VERSION;
     try {
       const result = await fetchLatestBaileysVersion();
       version = result.version;
       this.logger.info('Version WA : ' + version.join('.'));
     } catch (_) {
-      this.logger.warn('Fallback version WA : ' + FALLBACK_VERSION.join('.'));
+      this.logger.warn('fetchLatestBaileysVersion échoué — fallback : ' + version.join('.'));
     }
 
-    // ── 4. SOCKET ────────────────────────────────────────────────
+    // ── 3. SOCKET ────────────────────────────────────────────────
+    // Pas de "browser" personnalisé → Baileys choisit le bon fingerprint
+    // pour les pairing codes. Pas de makeCacheableSignalKeyStore qui
+    // corrompait la session dans les tests précédents.
     this.socket = makeWASocket({
       version,
       auth: state,
@@ -75,15 +106,20 @@ class Bot {
 
     this.commandHandler = new CommandHandler(this.socket);
 
-    // ── 5. CODE PAIR ─────────────────────────────────────────────
-    if (!state.creds.registered && !this._pairingRequested) {
-      this._pairingRequested = true;
+    // ── 4. CODE PAIR ─────────────────────────────────────────────
+    // Règle absolue :
+    //   requestPairingCode() est appelé UNE SEULE FOIS par session.
+    //   Après le 428, on reconnecte le socket SANS redemander de code.
+    //   Le flag _pairingCodeSent garantit cela.
+    if (!state.creds.registered && !this._pairingCodeSent) {
       const phone = (process.env.BOT_OWNER || '25766486303').replace(/[^0-9]/g, '');
-      this.logger.info('📱 Numéro : +' + phone);
+      this.logger.info('📱 Demande de code pair pour +' + phone);
 
       try {
         const code = await this.socket.requestPairingCode(phone);
-        const fmt  = (code || '').replace(/(.{4})(?=.)/g, '$1-');
+        const fmt  = (String(code)).replace(/(.{4})(?=.)/g, '$1-');
+
+        this._pairingCodeSent = true; // ← verrou posé ICI, après succès
 
         this.logger.info('');
         this.logger.info('╔══════════════════════════════════════════╗');
@@ -99,55 +135,58 @@ class Bot {
         this.logger.info('╚══════════════════════════════════════════╝');
         this.logger.info('');
 
-        // Reset après 3 min si toujours pas connecté → nouveau code
-        if (this._pairingTimer) clearTimeout(this._pairingTimer);
-        this._pairingTimer = setTimeout(() => {
+        // Sécurité : si l'utilisateur n'entre pas le code dans 3 minutes,
+        // on reset le flag pour permettre un nouveau code au prochain
+        // redémarrage manuel du service.
+        setTimeout(() => {
           if (!this.socket?.authState?.creds?.registered) {
-            this.logger.warn('⏰ Code expiré — nouveau code dans 3 secondes...');
-            this._pairingRequested = false;
-            if (this.socket) { try { this.socket.end(); } catch (_) {} }
-            setTimeout(() => this.initialize(), 3000);
+            this.logger.warn('⏰ Code expiré (3 min). Redémarrez le service sur Render pour un nouveau code.');
+            // On ne reset PAS automatiquement pour éviter la boucle infinie.
+            // L'utilisateur doit redémarrer manuellement.
           }
         }, 3 * 60 * 1000);
 
       } catch (err) {
-        this._pairingRequested = false;
-        throw new Error('requestPairingCode : ' + err.message);
+        this.logger.error('requestPairingCode() échoué : ' + err.message);
+        // On ne pose PAS _pairingCodeSent → on pourra réessayer
+        throw err; // remonté à initialize() qui planifie une reconnexion
       }
     }
 
-    // ── 6. CONNEXION ─────────────────────────────────────────────
+    // ── 5. ÉVÉNEMENTS ────────────────────────────────────────────
     this.socket.ev.on('connection.update', (update) => {
-      // On enveloppe dans un try/catch pour ne jamais laisser
-      // une exception non gérée remonter jusqu'à process
-      this._handleConnectionUpdate(update, saveCreds).catch(err => {
-        this.logger.error('connection.update non géré : ' + err.message);
+      this._onConnectionUpdate(update).catch((err) => {
+        this.logger.error('_onConnectionUpdate : ' + err.message);
       });
     });
 
-    // ── 7. CREDENTIALS ───────────────────────────────────────────
-    this.socket.ev.on('creds.update', saveCreds);
+    this.socket.ev.on('creds.update', () => {
+      if (this.saveCreds) this.saveCreds();
+    });
 
-    // ── 8. MESSAGES ──────────────────────────────────────────────
     this.socket.ev.on('messages.upsert', ({ messages, type }) => {
       if (type !== 'notify') return;
       for (const msg of messages) {
         if (msg.key.fromMe || !msg.message) continue;
-        this.commandHandler.handleMessage(msg).catch(err => {
+        this.commandHandler.handleMessage(msg).catch((err) => {
           this.logger.error('handleMessage : ' + err.message);
         });
       }
     });
   }
 
-  async _handleConnectionUpdate(update) {
+  // ═══════════════════════════════════════════════════════════════
+  // GESTION DES ÉVÉNEMENTS DE CONNEXION
+  // ═══════════════════════════════════════════════════════════════
+  async _onConnectionUpdate(update) {
     const { connection, lastDisconnect } = update;
 
+    // ── CONNECTÉ ─────────────────────────────────────────────────
     if (connection === 'open') {
       this.logger.info('✅ Bot connecté à WhatsApp !');
-      this.isReconnecting    = false;
-      this._pairingRequested = false;
-      if (this._pairingTimer) { clearTimeout(this._pairingTimer); this._pairingTimer = null; }
+      this._reconnecting    = false;
+      this._reconnectCount  = 0;
+      this._pairingCodeSent = false; // reset propre pour la prochaine session
 
       const owner = (process.env.BOT_OWNER || '25766486303').replace(/[^0-9]/g, '');
       const jid   = owner + '@s.whatsapp.net';
@@ -171,54 +210,77 @@ class Bot {
           });
           this.logger.info('📨 Message envoyé à +' + owner);
         } catch (e) {
-          this.logger.error('Envoi message owner : ' + e.message);
+          this.logger.error('Envoi owner : ' + e.message);
         }
       }, 4000);
+
       return;
     }
 
+    // ── DÉCONNECTÉ ───────────────────────────────────────────────
     if (connection === 'close') {
       const statusCode = lastDisconnect?.error?.output?.statusCode;
-      this.logger.warn('⚠️  Connexion fermée — code : ' + statusCode);
+      this.logger.warn('⚠️  Déconnexion — code : ' + statusCode);
 
-      // 428 = WA ferme normalement après la demande de code pair
-      // On reconnecte le socket SANS redemander de code
+      // Code 428 — comportement NORMAL de WhatsApp après une demande
+      // de pairing code. WA ferme la connexion et attend que l'utilisateur
+      // entre le code sur son téléphone.
+      // → On reconnecte le socket SANS appeler requestPairingCode à nouveau.
+      // → _pairingCodeSent reste true → pas de nouveau code généré.
       if (statusCode === 428) {
-        this.logger.info('ℹ️  428 normal — reconnexion sans nouveau code...');
-        if (!this.isReconnecting) {
-          this.isReconnecting = true;
-          setTimeout(() => {
-            this.isReconnecting = false;
-            // On ferme proprement l'ancien socket puis on reboot
-            if (this.socket) { try { this.socket.end(); } catch (_) {} this.socket = null; }
-            this.initialize();
-          }, 3000);
-        }
+        this.logger.info('ℹ️  428 = attente confirmation pairing — reconnexion dans 3s...');
+        this._scheduleReconnect(3000);
         return;
       }
 
+      // Session révoquée (l'utilisateur a retiré l'appareil dans WhatsApp)
       if (statusCode === DisconnectReason.loggedOut) {
-        this.logger.error('❌ Session expirée. Redémarrez le service sur Render.');
-        return;
+        this.logger.error('❌ Session révoquée. Supprimez sessions/ et redémarrez Render.');
+        this._pairingCodeSent = false;
+        return; // pas de reconnexion automatique — action manuelle requise
       }
 
-      // Toute autre déconnexion → reconnexion normale
-      if (!this.isReconnecting) {
-        this.isReconnecting = true;
-        this.logger.info('🔄 Reconnexion dans 5 secondes...');
-        setTimeout(() => {
-          this.isReconnecting = false;
-          if (this.socket) { try { this.socket.end(); } catch (_) {} this.socket = null; }
-          this.initialize();
-        }, 5000);
-      }
+      // Toute autre déconnexion → reconnexion automatique
+      this._scheduleReconnect();
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  // RECONNEXION AVEC ANTI-BOUCLE
+  // ─ Un seul timeout actif à la fois
+  // ─ Délai progressif pour éviter le flood
+  // ═══════════════════════════════════════════════════════════════
+  _scheduleReconnect(forceDelayMs = null) {
+    if (this._reconnecting) return; // verrou
+    this._reconnecting = true;
+
+    this._reconnectCount++;
+    // Délai progressif : 5s, 10s, 15s… max 30s
+    const delay = forceDelayMs !== null
+      ? forceDelayMs
+      : Math.min(5000 * this._reconnectCount, 30000);
+
+    this.logger.info('🔄 Reconnexion dans ' + (delay / 1000) + 's... (tentative ' + this._reconnectCount + ')');
+
+    setTimeout(async () => {
+      this._reconnecting = false;
+      // Fermer proprement l'ancien socket avant de recréer
+      if (this.socket) {
+        try { this.socket.end(); } catch (_) {}
+        this.socket = null;
+      }
+      await this.initialize();
+    }, delay);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // ARRÊT PROPRE
+  // ═══════════════════════════════════════════════════════════════
   async shutdown() {
-    this.logger.info('🛑 Arrêt...');
-    if (this._pairingTimer) clearTimeout(this._pairingTimer);
-    if (this.socket) { try { this.socket.end(); } catch (_) {} }
+    this.logger.info('🛑 Arrêt du bot...');
+    if (this.socket) {
+      try { this.socket.end(); } catch (_) {}
+    }
     process.exit(0);
   }
 }
