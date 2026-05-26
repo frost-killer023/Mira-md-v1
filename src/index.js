@@ -1,27 +1,32 @@
+'use strict';
 require('dotenv').config();
+
 const Bot    = require('./core/Bot');
 const Logger = require('./utils/Logger');
 
 const logger = new Logger();
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Gestionnaires globaux d'erreurs — JAMAIS de process.exit ici.
+// Le bot gère ses propres erreurs et se reconnecte seul.
+// ─────────────────────────────────────────────────────────────────────────────
+process.on('uncaughtException', (err) => {
+  logger.error('uncaughtException : ' + err.message);
+  // On ne quitte PAS — le bot continue de tourner
+});
+
+process.on('unhandledRejection', (reason) => {
+  logger.error('unhandledRejection : ' + String(reason));
+  // On ne quitte PAS
+});
+
 async function main() {
   const bot = new Bot();
 
-  // Ne JAMAIS exit sur une erreur non gérée — on log et on continue
-  process.on('uncaughtException', (err) => {
-    logger.error('uncaughtException : ' + err.message);
-    // Le bot se reconnecte tout seul via ses propres mécanismes
-  });
+  process.on('SIGINT',  () => bot.shutdown());
+  process.on('SIGTERM', () => bot.shutdown());
 
-  process.on('unhandledRejection', (reason) => {
-    logger.error('unhandledRejection : ' + String(reason));
-    // Idem — pas de process.exit ici
-  });
-
-  process.on('SIGINT',  async () => { await bot.shutdown(); });
-  process.on('SIGTERM', async () => { await bot.shutdown(); });
-
-  // initialize() ne throw jamais — il gère ses propres erreurs en interne
+  // initialize() ne throw jamais — toutes les erreurs sont attrapées en interne
   await bot.initialize();
 }
 
