@@ -1,20 +1,23 @@
 const dotenv = require('dotenv');
 dotenv.config();
 
+// Normalise le numéro de téléphone : retire tout sauf les chiffres
+const ownerNumber = (process.env.BOT_OWNER || '25766486303').replace(/[^0-9]/g, '');
+
 module.exports = {
   // WhatsApp Config
   whatsapp: {
-    token: process.env.WHATSAPP_TOKEN,
-    phone: process.env.WHATSAPP_PHONE || '25766486303',
+    phone: ownerNumber,
     session: process.env.WHATSAPP_SESSION || 'mira_session'
   },
 
   // Bot Config
   bot: {
     name: process.env.BOT_NAME || 'Mira',
-    prefix: '!', // Fixé sur '!' directement pour être sûr
-    owner: '25766486303@c.us', // Ton identifiant WhatsApp officiel pour les commandes Admin/Owner
-    debug: true
+    prefix: '!',
+    // Format Baileys : numéro@s.whatsapp.net  (et non @c.us comme dans whatsapp-web.js)
+    owner: `${ownerNumber}@s.whatsapp.net`,
+    debug: process.env.DEBUG_MODE === 'true'
   },
 
   // Database Config
@@ -27,7 +30,7 @@ module.exports = {
 
   // API Keys
   api: {
-    openai: process.env.OPENAI_API_KEY,
+    groq: process.env.GROQ_API_KEY,
     weather: process.env.WEATHER_API_KEY,
     translate: process.env.TRANSLATE_API_KEY,
     spotify: process.env.SPOTIFY_API_KEY
@@ -41,21 +44,21 @@ module.exports = {
 
   // Features
   features: {
-    ai: true, // Activé par défaut
-    weather: true,
-    music: true,
-    admin: true,
-    autoReply: true
+    ai: process.env.ENABLE_AI !== 'false',
+    weather: process.env.ENABLE_WEATHER !== 'false',
+    music: process.env.ENABLE_MUSIC !== 'false',
+    admin: process.env.ENABLE_ADMIN !== 'false',
+    autoReply: process.env.ENABLE_AUTO_REPLY === 'true'
   },
 
-  // Timeouts
+  // Timeouts (ms)
   timeouts: {
     messageTimeout: 30000,
     apiTimeout: 15000,
     reconnectTimeout: 5000
   },
 
-  // Commands Cooldown (ms)
+  // Cooldown entre commandes (ms)
   cooldown: {
     default: 3000,
     premium: 1000,
